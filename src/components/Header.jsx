@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -16,7 +16,11 @@ const categories = [
 export default function Header() {
   const [searchParams] = useSearchParams();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const activeCategory = searchParams.get("category") || "Home";
+  const location = useLocation();
+  const isHomePage = location.pathname === "/";
+const activeCategory = isHomePage 
+    ? (searchParams.get("category") || "Home") 
+    : null;
 
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">

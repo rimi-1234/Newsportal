@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef, useCallback } from "react" // 1. Added useCallback
 import { useSearchParams } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import Header from "../components/Header"
@@ -7,16 +7,9 @@ import NewsCard from "../components/NewsCard"
 import TrendingSection from "../components/TrendingSection"
 import SearchFilter from "../components/SearchFilter"
 import SkeletonCard from "../components/SkeletonCard"
+import Footer from "../components/Footer"
+import Preloader from "../components/Preloader"
 import newsData from "../data/news.json"
-
-// --- SLOW MOTION SETTINGS ---
-// We use these specifically for the layout transitions and hover effects
-const slowSpring = {
-  type: "spring",
-  stiffness: 35, // Very low stiffness = slow, heavy movement
-  damping: 15,
-  mass: 1.2
-}
 
 export default function Home() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -24,22 +17,24 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("")
 
+  const [displayCount, setDisplayCount] = useState(8)
+  const [isFetching, setIsFetching] = useState(false)
+  
+  // 2. This ref will store the observer so we can disconnect it
+  const observerRef = useRef(null)
+
   useEffect(() => {
     const category = searchParams.get("category") || ""
     setSelectedCategory(category)
+    setLoading(true)
+    setDisplayCount(8)
+
     const timer = setTimeout(() => setLoading(false), 800)
     return () => clearTimeout(timer)
   }, [searchParams])
 
-  const handleSearchChange = (query) => setSearchQuery(query)
-
-  const handleCategoryChange = (category) => {
-    setSelectedCategory(category)
-    category ? setSearchParams({ category }) : setSearchParams({})
-  }
-
   const filteredArticles = useMemo(() => {
-    let result = newsData.articles
+    let result = newsData.articles.filter(a => !a.isFeatured)
     if (selectedCategory) result = result.filter(a => a.category === selectedCategory)
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
@@ -48,89 +43,117 @@ export default function Home() {
     return result
   }, [searchQuery, selectedCategory])
 
+  const handleLoadMore = () => {
+    setIsFetching(true)
+    setTimeout(() => {
+      setDisplayCount((prev) => prev + 4)
+      setIsFetching(false)
+    }, 400)
+  }
+
+  // 3. CORRECTED CALLBACK REF
+  const loaderRef = useCallback((node) => {
+    if (loading) return;
+
+    // Clean up previous observer if it exists
+    if (observerRef.current) observerRef.current.disconnect();
+
+    if (node) {
+      observerRef.current = new IntersectionObserver(
+        (entries) => {
+          const first = entries[0];
+          if (first.isIntersecting && !isFetching && displayCount < filteredArticles.length) {
+            handleLoadMore();
+          }
+        },
+        { threshold: 0.1, rootMargin: "200px" }
+      );
+      observerRef.current.observe(node);
+    }
+  }, [loading, isFetching, displayCount, filteredArticles.length]);
+
+  const visibleArticles = filteredArticles.slice(0, displayCount)
   const featuredArticle = newsData.articles.find(a => a.isFeatured) || newsData.articles[0]
   const trendingArticles = [...newsData.articles].sort((a, b) => b.views - a.views).slice(0, 5)
-  const regularArticles = filteredArticles.filter(a => !a.isFeatured)
-  const hasNoResults = !loading && filteredArticles.length === 0
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header with its own internal slow-motion active tab */}
-      <Header />
-      
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        {/* Featured Article - Renders immediately */}
-        <FeaturedArticle article={featuredArticle} />
+    <Preloader>
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <FeaturedArticle article={featuredArticle} />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-10">
-          <div className="lg:col-span-2">
-            
-            <SearchFilter
-              onSearchChange={handleSearchChange}
-              onCategoryChange={handleCategoryChange}
-              currentCategory={selectedCategory}
-              currentSearch={searchQuery}
-            />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-10">
+            <div className="lg:col-span-2">
+              <SearchFilter
+                onSearchChange={setSearchQuery}
+                onCategoryChange={(cat) => {
+                  setSelectedCategory(cat)
+                  cat ? setSearchParams({ category: cat }) : setSearchParams({})
+                }}
+                currentCategory={selectedCategory}
+                currentSearch={searchQuery}
+              />
 
-            {/* Grid Transitions - Slow Motion filtering */}
-            <AnimatePresence mode="popLayout">
-              {loading ? (
-                <motion.div 
-                  key="loading"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.8 }}
-                  className="grid grid-cols-1 md:grid-cols-2 gap-6"
-                >
-                  {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
-                </motion.div>
-              ) : hasNoResults ? (
-                <motion.div 
-                  key="no-results" 
-                  initial={{ opacity: 0 }} 
-                  animate={{ opacity: 1 }} 
-                  className="text-center py-12"
-                >
-                  <h3 className="text-lg font-semibold">No articles found</h3>
-                </motion.div>
-              ) : (
-                <motion.div 
-                  key="results"
-                  className="grid grid-cols-1 md:grid-cols-2 gap-6"
-                >
-                  {regularArticles.map((article) => (
-                    <motion.div
-                      key={article.id}
-                      layout // This makes the cards slide slowly to new positions
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{
-                        layout: slowSpring, // Slow movement when list changes
-                        opacity: { duration: 1 },
-                        y: { duration: 1 }
-                      }}
-                      whileHover={{ 
-                        scale: 1.03, 
-                        y: -5,
-                        transition: { duration: 0.5 } // Slow hover response
-                      }}
-                    >
-                      <NewsCard article={article} />
+              <AnimatePresence mode="popLayout">
+                {loading ? (
+                  <motion.div
+                    key="skeletons"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="grid grid-cols-1 md:grid-cols-2 gap-6"
+                  >
+                    {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+                  </motion.div>
+                ) : (
+                  <motion.div key="content" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                    <motion.div layout className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {visibleArticles.map((article) => (
+                        <motion.div key={article.id} layout transition={{ duration: 0.5 }}>
+                          <NewsCard article={article} />
+                        </motion.div>
+                      ))}
                     </motion.div>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                
+                    {/* TRIGGER DIV */}
+                    <div
+                      ref={loaderRef}
+                      className="py-12 flex flex-col items-center justify-center min-h-[120px]"
+                    >
+                      {displayCount < filteredArticles.length ? (
+                        <div className="flex flex-col items-center gap-3">
+                          <motion.div
+                            animate={{ rotate: 360 }}
+                            transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                            className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full"
+                          />
+                          <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground animate-pulse">
+                            Loading more stories
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="w-full pt-8 border-t border-border/40 mt-8 text-center">
+                          <p className="text-sm text-muted-foreground font-serif italic">
+                            You have reached the end of the catalog.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
-          {/* Sidebar - Renders immediately */}
-          <aside className="block">
-             <TrendingSection articles={trendingArticles} />
-          </aside>
-        </div>
-      </main>
-    </div>
+            <aside>
+              <div className="sticky top-24">
+                <TrendingSection articles={trendingArticles} />
+              </div>
+            </aside>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    </Preloader>
   )
 }
