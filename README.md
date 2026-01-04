@@ -79,7 +79,7 @@ news-portal-ui-react-js/
 
 ---
 
-## ✨ Feature Breakdown
+## ✨ Key Features
 
 ### 🏠 Home Page
 Displays the latest news with:
