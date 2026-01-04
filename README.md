@@ -3,7 +3,7 @@
 A modern, fast, and responsive **News Portal Frontend** built with **React 19**, **Vite**, and **Tailwind CSS**.  
 This project focuses on performance, clean UI/UX, animations, and scalable architecture.
 
-[**🌐 Live Demo**](https://rimi-1234-newsportal.netlify.app/) | [**📂 GitHub Repo**](https://rimi-1234-newsportal.netlify.app/)
+[**🌐 Live Demo**](https://rimi-1234-newsportal.netlify.app/) | [**📂 GitHub Repo**](https://github.com/rimi-1234/Newsportal)
 
 ---
 
